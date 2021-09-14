@@ -1,0 +1,95 @@
+timeout: 10800s
+# substitutions:
+#   _DYSON_APP_NAME: "dyson-taxi"
+#   _DYSON_TOPIC: "projects/pubsub-public-data/topics/taxirides-realtime"
+steps:
+  # [Set project Id throughout the repo]
+# - name: gcr.io/kpt-dev/kpt:latest
+#   id: "Set Project ID"
+#   args: ['cfg', 'set', '.', 'PROJECT_ID', '${PROJECT_ID}']
+
+#   # [Set the Pub/Sub topic to use
+# - name: gcr.io/kpt-dev/kpt:latest
+#   id: "Set Pub/Sub Topic"
+#   args: ['cfg', 'set', '.', 'TOPIC', '${_DYSON_TOPIC}']
+
+#   # [Set the name of the app to be deployed into GKE]
+# - name: gcr.io/kpt-dev/kpt:latest
+#   id: "Set App Name"
+#   args: ['cfg', 'set', '.', 'APP_NAME', '${_DYSON_APP_NAME}']
+
+# [Delete all resources]
+- name: 'gcr.io/cloud-builders/kubectl'
+  id: "destroy-manifests-us"
+  args: ['delete', '--ignore-not-found','-f', './kubernetes/us.yaml']
+  env:
+  - 'CLOUDSDK_COMPUTE_ZONE=us-central1-f'
+  - 'CLOUDSDK_CONTAINER_CLUSTER=us-cluster'
+
+- name: 'gcr.io/cloud-builders/kubectl'
+  id: "destroy-manifests-eu"
+  args: ['delete', '--ignore-not-found','-f', './kubernetes/eu.yaml']
+  env:
+  - 'CLOUDSDK_COMPUTE_ZONE=europe-west1-c'
+  - 'CLOUDSDK_CONTAINER_CLUSTER=eu-cluster'
+
+
+  # [disable config cluster]
+- name: "gcr.io/cloud-builders/gcloud"
+  id: "unset-multicluster"
+  args:
+  - "beta"
+  - "container"
+  - "hub"
+  - "ingress"
+  - "disable"
+  waitFor:
+    - destroy-manifests-us
+    - destroy-manifests-eu
+
+- name: "gcr.io/cloud-builders/gcloud"
+  id: "unregister-cluster1"
+  args:
+  - "container"
+  - "hub"
+  - "memberships"
+  - "unregister"
+  - "gke-us"
+  - "--gke-cluster=us-central1-f/us-cluster"
+  waitFor:
+    - unset-multicluster
+
+- name: "gcr.io/cloud-builders/gcloud"
+  id: "unregister-cluster2"
+  args:
+  - "container"
+  - "hub"
+  - "memberships"
+  - "unregister"
+  - "gke-eu"
+  - "--gke-cluster=europe-west1-c/eu-cluster"
+  waitFor:
+    - unset-multicluster
+
+
+  # [Kick off Terraform destroy]
+- name: "gcr.io/cloud-builders/gcloud"
+  id: "destroy-clusters"
+  dir: "setup"
+  args:
+  - "builds"
+  - "submit"
+  - "--config=destroy.yaml"
+  waitFor:
+    - unregister-cluster2
+    - unregister-cluster1
+
+
+    
+#   # [Build Dyson Container Image]
+# - name: 'gcr.io/cloud-builders/docker'
+#   args: ['build', '-t', 'gcr.io/$PROJECT_ID/dyson:latest','.']
+
+#   # [Push Container Image to gcr]
+# - name: 'gcr.io/cloud-builders/docker'
+#   args: ["push", "gcr.io/$PROJECT_ID/dyson:latest",]

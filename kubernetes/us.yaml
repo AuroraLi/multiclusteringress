@@ -1,0 +1,54 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: zoneprinter
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zone-ingress
+  namespace: zoneprinter
+  labels:
+    app: zoneprinter
+spec:
+  selector:
+    matchLabels:
+      app: zoneprinter
+  template:
+    metadata:
+      labels:
+        app: zoneprinter
+    spec:
+      containers:
+      - name: frontend
+        image: gcr.io/google-samples/zone-printer:0.2
+        ports:
+        - containerPort: 8080
+---
+apiVersion: networking.gke.io/v1
+kind: MultiClusterService
+metadata:
+  name: zone-mcs
+  namespace: zoneprinter
+spec:
+  template:
+    spec:
+      selector:
+        app: zoneprinter
+      ports:
+      - name: web
+        protocol: TCP
+        port: 8080
+        targetPort: 8080
+---
+apiVersion: networking.gke.io/v1
+kind: MultiClusterIngress
+metadata:
+  name: zone-ingress
+  namespace: zoneprinter
+spec:
+  template:
+    spec:
+      backend:
+        serviceName: zone-mcs
+        servicePort: 8080

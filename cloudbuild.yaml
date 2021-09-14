@@ -1,0 +1,179 @@
+timeout: 10800s
+# substitutions:
+#   _DYSON_APP_NAME: "dyson-taxi"
+#   _DYSON_TOPIC: "projects/pubsub-public-data/topics/taxirides-realtime"
+steps:
+  # [Set project Id throughout the repo]
+# - name: gcr.io/kpt-dev/kpt:latest
+#   id: "Set Project ID"
+#   args: ['cfg', 'set', '.', 'PROJECT_ID', '${PROJECT_ID}']
+
+#   # [Set the Pub/Sub topic to use
+# - name: gcr.io/kpt-dev/kpt:latest
+#   id: "Set Pub/Sub Topic"
+#   args: ['cfg', 'set', '.', 'TOPIC', '${_DYSON_TOPIC}']
+
+#   # [Set the name of the app to be deployed into GKE]
+# - name: gcr.io/kpt-dev/kpt:latest
+#   id: "Set App Name"
+#   args: ['cfg', 'set', '.', 'APP_NAME', '${_DYSON_APP_NAME}']
+
+  # [Kick off Terraform deployment]
+- name: "gcr.io/cloud-builders/gcloud"
+  id: "deploy-clusters"
+  dir: "setup"
+  args:
+  - "builds"
+  - "submit"
+
+- name: "gcr.io/cloud-builders/gcloud"
+  id: "register-cluster1"
+  args:
+  - "container"
+  - "hub"
+  - "memberships"
+  - "register"
+  - "gke-us"
+  - "--gke-cluster=us-central1-f/us-cluster"
+  - "--enable-workload-identity"
+  waitFor:
+    - deploy-clusters
+
+- name: "gcr.io/cloud-builders/gcloud"
+  id: "register-cluster2"
+  args:
+  - "container"
+  - "hub"
+  - "memberships"
+  - "register"
+  - "gke-eu"
+  - "--gke-cluster=europe-west1-c/eu-cluster"
+  - "--enable-workload-identity"
+  waitFor:
+    - deploy-clusters
+
+
+- name: "gcr.io/cloud-builders/gcloud"
+  id: "register-cluster3"
+  args:
+  - "container"
+  - "hub"
+  - "memberships"
+  - "register"
+  - "gke-asia"
+  - "--gke-cluster=asia-south1-a/asia-cluster"
+  - "--enable-workload-identity"
+  waitFor:
+    - deploy-clusters
+
+#[cool down]
+# - name: 'ubuntu'
+#   id: "cool-down"
+#   args: ['sleep', '5']
+#   waitFor:
+#     - deploy-clusters
+#     - register-cluster2
+#     - register-cluster1
+
+  # [Set up config cluster]
+- name: "gcr.io/cloud-builders/gcloud"
+  id: "set-multicluster"
+  args:
+  - "beta"
+  - "container"
+  - "hub"
+  - "ingress"
+  - "enable"
+  - "--config-membership=gke-us"
+  waitFor:
+    - deploy-clusters
+    - register-cluster2
+    - register-cluster1
+    - register-cluster3
+    
+#   # [Build Dyson Container Image]
+# - name: 'gcr.io/cloud-builders/docker'
+#   args: ['build', '-t', 'gcr.io/$PROJECT_ID/dyson:latest','.']
+
+#   # [Push Container Image to gcr]
+# - name: 'gcr.io/cloud-builders/docker'
+#   args: ["push", "gcr.io/$PROJECT_ID/dyson:latest",]
+
+
+- name: 'gcr.io/cloud-builders/kubectl'
+  waitFor:
+    - deploy-clusters
+  args: ['apply', '-f', './kubernetes/eu.yaml']
+  env:
+  - 'CLOUDSDK_COMPUTE_ZONE=europe-west1-c'
+  - 'CLOUDSDK_CONTAINER_CLUSTER=eu-cluster'
+
+
+- name: 'gcr.io/cloud-builders/kubectl'
+  waitFor:
+    - set-multicluster
+  args: ['apply', '-f', './kubernetes/us.yaml']
+  env:
+  - 'CLOUDSDK_COMPUTE_ZONE=us-central1-f'
+  - 'CLOUDSDK_CONTAINER_CLUSTER=us-cluster'
+
+
+- name: 'gcr.io/cloud-builders/kubectl'
+  waitFor:
+    - deploy-clusters
+  args: ['apply', '-f', './kubernetes/asia.yaml']
+  env:
+  - 'CLOUDSDK_COMPUTE_ZONE=asia-south1-a'
+  - 'CLOUDSDK_CONTAINER_CLUSTER=asia-cluster'
+
+
+# - name: 'gcr.io/cloud-builders/kubectl'
+#   waitFor:
+#     - deploy-clusters
+#   args: ['apply', '-f', './kubernetes/ns.yaml']
+#   env:
+#   - 'CLOUDSDK_COMPUTE_ZONE=us-central1-f'
+#   - 'CLOUDSDK_CONTAINER_CLUSTER=asia-cluster'
+
+
+# - name: 'gcr.io/cloud-builders/kubectl'
+#   waitFor:
+#     - deploy-clusters
+#   args: ['apply', '-f', './kubernetes/deploy.yaml']
+#   env:
+#   - 'CLOUDSDK_COMPUTE_ZONE=europe-west1-c'
+#   - 'CLOUDSDK_CONTAINER_CLUSTER=eu-cluster'
+
+
+# - name: 'gcr.io/cloud-builders/kubectl'
+#   waitFor:
+#     - deploy-clusters
+#   args: ['apply', '-f', './kubernetes/deploy.yaml']
+#   env:
+#   - 'CLOUDSDK_COMPUTE_ZONE=asia-south1-a'
+#   - 'CLOUDSDK_CONTAINER_CLUSTER=asia-cluster'
+
+# - name: 'gcr.io/cloud-builders/kubectl'
+#   waitFor:
+#     - deploy-clusters
+#   args: ['apply', '-f', './kubernetes/deploy.yaml']
+#   env:
+#   - 'CLOUDSDK_COMPUTE_ZONE=us-central1-f'
+#   - 'CLOUDSDK_CONTAINER_CLUSTER=us-cluster'
+
+
+# - name: 'gcr.io/cloud-builders/kubectl'
+#   waitFor:
+#     - set-multicluster
+#   args: ['apply', '-f', './kubernetes/mcs.yaml']
+#   env:
+#   - 'CLOUDSDK_COMPUTE_ZONE=us-central1-f'
+#   - 'CLOUDSDK_CONTAINER_CLUSTER=us-cluster'
+
+# - name: 'gcr.io/cloud-builders/kubectl'
+#   waitFor:
+#     - set-multicluster
+#   args: ['apply', '-f', './kubernetes/mci.yaml']
+#   env:
+#   - 'CLOUDSDK_COMPUTE_ZONE=us-central1-f'
+#   - 'CLOUDSDK_CONTAINER_CLUSTER=us-cluster'
